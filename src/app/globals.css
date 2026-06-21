@@ -24,3 +24,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes dash {
+  from { stroke-dashoffset: 10; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0px #a855f7; }
+  50% { box-shadow: 0 0 20px #a855f7; }
+}
