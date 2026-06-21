@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Returns signed Transloadit assembly options for the Uppy client.
  * The auth secret never leaves this route — the client only receives

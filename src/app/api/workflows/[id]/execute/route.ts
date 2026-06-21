@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { runDAG } from "@/server/scheduler/dagScheduler";
-import { auth } from "@trigger.dev/sdk/v3";
+
+// Force dynamic — this route calls external services (Trigger.dev, Prisma)
+// and must never be statically analyzed/rendered at build time.
+export const dynamic = "force-dynamic";
 
 const ExecuteSchema = z.object({
   mode: z.enum(["full", "single", "multi"]),
@@ -42,7 +45,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   let publicToken: string | undefined;
   try {
-  console.log(`🔵 [executeNode] Starting node execution`);
+    // Dynamic import — avoids Trigger.dev SDK initializing at build time
+    const { auth } = await import("@trigger.dev/sdk/v3");
     publicToken = await auth.createPublicToken({
       scopes: {
         read: {
@@ -50,8 +54,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       },
     });
-  } catch (error: any) {
-    console.error("Failed to create public token (is TRIGGER_SECRET_KEY set?):", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Failed to create public token (is TRIGGER_SECRET_KEY set?):", msg);
   }
 
   // Fire and don't block the HTTP response on full completion —
