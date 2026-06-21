@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workflow {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nodes     WorkflowNode[]
+  edges     WorkflowEdge[]
+  runs      WorkflowRun[]
+}
+
+model WorkflowNode {
+  id         String   @id @default(cuid())
+  workflowId String
+  type       String
+  positionX  Float
+  positionY  Float
+  config     Json     @default("{}")
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  executions RunNodeExecution[]
+}
+
+model WorkflowEdge {
+  id           String @id @default(cuid())
+  workflowId   String
+  sourceNode   String
+  targetNode   String
+  sourceHandle String?
+  targetHandle String?
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model WorkflowRun {
+  id         String    @id @default(cuid())
+  workflowId String
+  status     String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  workflow       Workflow           @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  nodeExecutions RunNodeExecution[]
+}
+
+model RunNodeExecution {
+  id            String    @id @default(cuid())
+  runId         String
+  nodeId        String
+  status        String
+  input         Json?
+  output        Json?
+  executionTime Int?
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+
+  run  WorkflowRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  node WorkflowNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+}

@@ -1,0 +1,33 @@
+{
+  // Show inline values while stopped at a breakpoint
+  "debug.inlineValues": "on",
+
+  // Show variable values in the editor gutter during a debug session
+  "editor.inlayHints.enabled": "on",
+
+  // Keep the debug console open
+  "debug.openDebug": "openOnDebugBreak",
+
+  // Save all files before starting a debug session
+  "debug.saveBeforeStart": "allEditorsInActiveGroup",
+
+  // Highlight the line currently paused on
+  "editor.focusedEditorBorder": true,
+
+  // TypeScript: show type hints inline — useful when stepping through nodeRunner
+  "typescript.inlayHints.parameterTypes.enabled": true,
+  "typescript.inlayHints.variableTypes.enabled": true,
+  "typescript.inlayHints.functionLikeReturnTypes.enabled": true,
+
+  // Exclude heavy folders from file watcher (speeds up debugging)
+  "files.watcherExclude": {
+    "**/.next/**": true,
+    "**/node_modules/**": true
+  },
+
+  // Map .ts source files so breakpoints resolve correctly in Next.js
+  "debug.javascript.usePreview": true,
+  "debug.javascript.terminalOptions": {
+    "sourceMapRenames": true
+  }
+}
