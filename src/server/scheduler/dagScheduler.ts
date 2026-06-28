@@ -37,19 +37,25 @@ export async function runDAG(
   }
 
   async function tryExecute(nodeId: string) {
-    if (!activeNodeIds.has(nodeId)) return;
+    if (!activeNodeIds.has(nodeId)) {
+      console.log(`[dagScheduler] Skipping ${nodeId} — not in activeNodeIds`);
+      return;
+    }
 
     const node = nodes.find(n => n.id === nodeId)!;
     const inputs = resolveInputs(nodeId, edges, outputs);
 
     statuses.set(nodeId, "Running");
+    console.log(`[dagScheduler] 🚀 EXECUTING NODE: ${nodeId} (${node.type})`);
 
     let result;
     try {
       result = await executeNode(node, inputs, runId);
       outputs.set(nodeId, result);
       statuses.set(nodeId, "Completed");
+      console.log(`[dagScheduler] ✅ COMPLETED NODE: ${nodeId}`);
     } catch (err) {
+      console.log(`[dagScheduler] ❌ FAILED NODE: ${nodeId}`, err);
       statuses.set(nodeId, "Failed");
       // Failure propagation: downstream nodes never unlock — mark them Skipped
       for (const childId of adjacency[nodeId]) {
@@ -60,10 +66,16 @@ export async function runDAG(
 
     // Unlock children whose parents are ALL completed
     const unlocked = adjacency[nodeId].filter(childId => {
-      if (!activeNodeIds.has(childId)) return false;
+      if (!activeNodeIds.has(childId)) {
+        console.log(`[dagScheduler]   -> child ${childId} not in active set`);
+        return false;
+      }
       remaining[childId]--;
+      console.log(`[dagScheduler]   -> child ${childId} dependencies remaining: ${remaining[childId]}`);
       return remaining[childId] === 0;
     });
+
+    console.log(`[dagScheduler] Node ${nodeId} unlocked children:`, unlocked);
 
     // True parallelism — siblings execute concurrently, not sequentially
     await Promise.all(unlocked.map(childId => tryExecute(childId)));
@@ -72,6 +84,13 @@ export async function runDAG(
   const roots = nodes
     .filter(n => activeNodeIds.has(n.id) && remaining[n.id] === 0)
     .map(n => n.id);
+
+  console.log(`[dagScheduler] 🏁 STARTING DAG RUN`);
+  console.log(`[dagScheduler] Mode: ${scope?.mode ?? "full"}`);
+  console.log(`[dagScheduler] Active Nodes:`, Array.from(activeNodeIds));
+  console.log(`[dagScheduler] Adjacency:`, adjacency);
+  console.log(`[dagScheduler] Initial Remaining:`, remaining);
+  console.log(`[dagScheduler] Roots:`, roots);
 
   await Promise.all(roots.map(id => tryExecute(id)));
 

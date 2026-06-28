@@ -10,7 +10,6 @@ import "@uppy/dashboard/css/style.css";
 import { Info, Copy, Trash2, GripVertical, Maximize2, Plus, Upload } from "lucide-react";
 import { useWorkflowStore } from "@/lib/workflowStore";
 
-// ── Single field row (text or image) ──────────────────────────────────────
 function FieldRow({
   label,
   handleId,
@@ -26,7 +25,6 @@ function FieldRow({
 }) {
   return (
     <div className="mb-3 last:mb-0">
-      {/* Row header */}
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5 text-zinc-500">
           <GripVertical size={13} className="text-zinc-300 cursor-grab" />
@@ -50,10 +48,8 @@ function FieldRow({
         </div>
       </div>
 
-      {/* Content area — positioned relative so handle attaches to it */}
       <div className="relative">
         {children}
-        {/* Output handle on the right edge, vertically centred */}
         <Handle
           type="source"
           id={handleId}
@@ -75,7 +71,6 @@ function FieldRow({
   );
 }
 
-// ── Main node ─────────────────────────────────────────────────────────────
 export default function RequestInputsNode({ id, data }: NodeProps) {
   const updateNodeConfig = useWorkflowStore((s) => s.updateNodeConfig);
 
@@ -86,7 +81,17 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
   const [showUploader, setShowUploader] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
 
-  // Uppy Dashboard mounted imperatively — Uppy 4 has no React component
+  // Set default image for testing if not yet defined
+  useEffect(() => {
+    if (config?.image_field === undefined) {
+      updateNodeConfig(
+        id,
+        "image_field",
+        "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1000&auto=format&fit=crop"
+      );
+    }
+  }, [config?.image_field, id, updateNodeConfig]);
+
   useEffect(() => {
     if (!showUploader || !dashboardRef.current) return;
 
@@ -96,11 +101,23 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
 
     uppy.use(Transloadit, {
       async assemblyOptions() {
-        const res = await fetch("/api/transloadit-params");
-        if (!res.ok) throw new Error("Failed to get upload params");
-        return res.json();
+        const res = await fetch("/api/transloadit-signature", {
+          method: "POST",
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error ?? "Failed to get upload params");
+        }
+
+        const { params, signature } = await res.json();
+
+        return {
+          params,     // ✅ plain object — no JSON.parse needed
+          signature,  // ✅ "sha384:abc123..."
+        };
       },
-      waitForEncoding: true,
+      waitForEncoding: true, // ✅ true because template has a "resized" encoding step
     });
 
     uppy.use(Dashboard, {
@@ -112,16 +129,34 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
       note: "Upload one image (JPG, PNG, WebP)",
     });
 
+    // ✅ Get URL from "resized" step (your template's final step)
+    uppy.on("transloadit:result", (stepName, result) => {
+      if (stepName === "resized") {
+        const hostedUrl = result?.ssl_url ?? result?.url;
+        if (hostedUrl) {
+          updateNodeConfig(id, "image_field", hostedUrl);
+          setShowUploader(false);
+        }
+      }
+    });
+
+    // ✅ Fallback if transloadit:result doesn't fire
     uppy.on("complete", (result) => {
-      const uploadedFile = result.successful?.[0];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const hostedUrl =
-        (uploadedFile as any)?.transloadit?.results?.[":original"]?.[0]?.ssl_url ??
-        uploadedFile?.uploadURL;
-      if (hostedUrl) {
-        updateNodeConfig(id, "image_field", hostedUrl);
+      const file = result.successful?.[0];
+      const fallbackUrl = file?.uploadURL;
+      if (fallbackUrl) {
+        updateNodeConfig(id, "image_field", fallbackUrl);
         setShowUploader(false);
       }
+    });
+
+    // ✅ Log errors clearly
+    uppy.on("error", (error) => {
+    console.error("❌ Uppy error:", error);
+    });
+
+    uppy.on("transloadit:assembly-error", (assembly, error) => {
+      console.error("❌ Transloadit assembly error:", error, assembly);
     });
 
     return () => { uppy.destroy(); };
@@ -130,7 +165,6 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
 
   return (
     <div className="bg-white rounded-2xl shadow-md ring-1 ring-zinc-200 w-[340px]">
-      {/* ── Header ── */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-sm text-zinc-900">Request-Inputs</span>
@@ -142,7 +176,7 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
       </div>
 
       <div className="px-4 pb-4 space-y-0">
-        {/* ── text_field ── */}
+        {/* text_field */}
         <FieldRow
           label="text_field"
           handleId="text_field"
@@ -158,7 +192,6 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
                          px-3 py-2.5 resize-none focus:outline-none focus:ring-2
                          focus:ring-orange-300 transition-shadow min-h-[90px]"
             />
-            {/* Resize icon hint — decorative, matches screenshot */}
             <Maximize2
               size={11}
               className="absolute bottom-2 right-2 text-zinc-300 rotate-90 pointer-events-none"
@@ -166,14 +199,12 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
           </div>
         </FieldRow>
 
-        {/* ── image_field ── */}
+        {/* image_field */}
         <FieldRow
           label="image_field"
           handleId="image_field"
           handleColor="#3b82f6"
-          onClear={() => {
-            updateNodeConfig(id, "image_field", "");
-          }}
+          onClear={() => updateNodeConfig(id, "image_field", "")}
         >
           {imageValue ? (
             <div className="relative rounded-xl overflow-hidden border border-zinc-200">
@@ -199,7 +230,6 @@ export default function RequestInputsNode({ id, data }: NodeProps) {
             </button>
           )}
 
-          {/* Uppy Dashboard popover */}
           {showUploader && (
             <div className="absolute z-50 top-full left-0 mt-2 shadow-2xl rounded-xl
                             overflow-hidden border border-zinc-200 bg-white">

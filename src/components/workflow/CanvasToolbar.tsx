@@ -18,6 +18,7 @@ export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarP
   const { nodes, edges, undo, redo, setNodes, setEdges, takeSnapshot } = useWorkflowStore();
   const setNodeStatus = useWorkflowStore((s) => s.setNodeStatus);
   const clearNodeStatuses = useWorkflowStore((s) => s.clearNodeStatuses);
+  const updateNodeConfig = useWorkflowStore((s) => s.updateNodeConfig);
 
   const selectedNodeIds = useWorkflowStore(
     useShallow((s) => s.nodes.filter((n) => n.selected).map((n) => n.id))
@@ -61,7 +62,22 @@ export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarP
               : exec.status === "Failed" || exec.status === "FAILED"
               ? "Failed"
               : null;
-          if (normalized) setNodeStatus(exec.nodeId, normalized);
+          if (normalized) {
+            setNodeStatus(exec.nodeId, normalized);
+            
+            // Pass the output data into the node's config so connected nodes (like ResponseNode) can display it!
+            if (normalized === "Completed" && exec.output) {
+              let outData = exec.output;
+              if (typeof outData === "string") {
+                try { outData = JSON.parse(outData); } catch {}
+              }
+              if (typeof outData === "object" && outData !== null) {
+                for (const [k, v] of Object.entries(outData)) {
+                  updateNodeConfig(exec.nodeId, k, v);
+                }
+              }
+            }
+          }
         }
 
         // Stop when the overall run is terminal
@@ -85,6 +101,24 @@ export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarP
     setIsRunning(true);
 
     try {
+      // Force save the latest nodes and edges before executing so the backend doesn't miss newly created connections!
+      // We must map them to plain objects to strip out any non-serializable internal React Flow properties (like DOM refs)
+      const currentNodes = useWorkflowStore.getState().nodes.map(n => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data: n.data
+      }));
+      const currentEdges = useWorkflowStore.getState().edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle,
+        targetHandle: e.targetHandle
+      }));
+      const { saveWorkflow } = await import("@/actions/workflow");
+      await saveWorkflow(workflowId, currentNodes, currentEdges);
+
       const res = await fetch(`/api/workflows/${workflowId}/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

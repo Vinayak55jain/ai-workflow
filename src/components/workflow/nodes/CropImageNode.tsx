@@ -3,6 +3,7 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { Play, MoreHorizontal, Info, RotateCcw, Plus, Upload } from "lucide-react";
 import { useWorkflowStore } from "@/lib/workflowStore";
+import { useEffect } from "react";
 
 // ─── Slider row matching the screenshot ────────────────────────────────────
 function SliderRow({
@@ -99,6 +100,21 @@ function SliderRow({
 export default function CropImageNode({ id, data, selected }: NodeProps) {
   const executionStatus = useWorkflowStore((s) => s.nodeStatuses[id]);
   const isRunning = executionStatus === "Running";
+  const updateNodeConfig = useWorkflowStore((s) => s.updateNodeConfig);
+
+  const config = data?.config as Record<string, any> | undefined;
+  const imageValue = config?.image_field;
+
+  // Set default image for testing if not yet defined
+  useEffect(() => {
+    if (config?.image_field === undefined) {
+      updateNodeConfig(
+        id,
+        "image_field",
+        "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1000&auto=format&fit=crop"
+      );
+    }
+  }, [config?.image_field, id, updateNodeConfig]);
 
   return (
     <div
@@ -154,9 +170,15 @@ export default function CropImageNode({ id, data, selected }: NodeProps) {
           </span>
 
           {/* Upload area */}
-          <label className="flex-1 flex items-center justify-center gap-2 border border-zinc-200 rounded-xl py-2.5 bg-zinc-50 hover:bg-zinc-100 cursor-pointer transition-colors text-zinc-500">
-            <Upload size={14} />
-            <span className="text-xs font-medium">Upload Image</span>
+          <label className="flex-1 flex items-center justify-center gap-2 border border-zinc-200 rounded-xl bg-zinc-50 hover:bg-zinc-100 cursor-pointer transition-colors text-zinc-500 overflow-hidden relative" style={{ height: "42px" }}>
+            {imageValue ? (
+              <img src={imageValue} alt="Input" className="w-full h-full object-cover" />
+            ) : (
+              <>
+                <Upload size={14} />
+                <span className="text-xs font-medium">Upload Image</span>
+              </>
+            )}
             <input
               type="file"
               accept="image/*"
@@ -166,7 +188,7 @@ export default function CropImageNode({ id, data, selected }: NodeProps) {
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = () =>
-                  useWorkflowStore.getState().updateNodeConfig(id, "image_field", reader.result as string);
+                  updateNodeConfig(id, "image_field", reader.result as string);
                 reader.readAsDataURL(file);
               }}
             />

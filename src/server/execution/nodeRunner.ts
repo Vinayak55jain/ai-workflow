@@ -191,6 +191,7 @@ export async function executeNode(
       // ── Extract actual data strings ──────────────────────────────────────
       // image: may come from CropImage (croppedImageUrl), RequestInput (image_field),
       //        or direct upload in node config (node.config.image — a data-URL)
+      console.log("🔵 [nodeRunner] imageInput:", imageInput);
       const imageBase64 =
         imageInput?.croppedImageUrl ??
         imageInput?.image_field ??
