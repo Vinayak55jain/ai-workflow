@@ -14,6 +14,19 @@ interface CanvasToolbarProps {
   onRunStart?: () => void;
 }
 
+// ✅ Added output field to the type
+interface NodeExecution {
+  nodeId: string;
+  status: string;
+  output?: Record<string, unknown> | string | null; // ✅ can be object or stringified JSON
+}
+
+interface WorkflowRun {
+  id: string;
+  status: string;
+  nodeExecutions: NodeExecution[];
+}
+
 export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarProps) {
   const { nodes, edges, undo, redo, setNodes, setEdges, takeSnapshot } = useWorkflowStore();
   const setNodeStatus = useWorkflowStore((s) => s.setNodeStatus);
@@ -32,8 +45,6 @@ export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarP
     return true;
   };
 
-  // Poll /api/workflows/[id]/runs until the run with runId is Completed or Failed,
-  // pushing per-node statuses into the store as they change.
   function startPolling(runId: string) {
     clearNodeStatuses();
     let stopped = false;
@@ -43,16 +54,12 @@ export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarP
       try {
         const res = await fetch(`/api/workflows/${workflowId}/runs`);
         if (!res.ok) return;
-        const runs: {
-          id: string;
-          status: string;
-          nodeExecutions: { nodeId: string; status: string }[];
-        }[] = await res.json();
+
+        const runs: WorkflowRun[] = await res.json(); // ✅ use proper type
 
         const run = runs.find((r) => r.id === runId);
         if (!run) return;
 
-        // Push every node's current status into the store
         for (const exec of run.nodeExecutions) {
           const normalized =
             exec.status === "Running"
@@ -62,29 +69,42 @@ export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarP
               : exec.status === "Failed" || exec.status === "FAILED"
               ? "Failed"
               : null;
+
           if (normalized) {
             setNodeStatus(exec.nodeId, normalized);
-            
-            // Pass the output data into the node's config so connected nodes (like ResponseNode) can display it!
-            if (normalized === "Completed" && exec.output) {
-              let outData = exec.output;
+
+            // ✅ Safely parse and apply output to node config
+            if (normalized === "Completed" && exec.output != null) {
+              let outData: unknown = exec.output;
+
+              // ✅ Parse if it's a JSON string
               if (typeof outData === "string") {
-                try { outData = JSON.parse(outData); } catch {}
+                try {
+                  outData = JSON.parse(outData);
+                } catch {
+                  // not valid JSON — skip
+                  outData = null;
+                }
               }
-              if (typeof outData === "object" && outData !== null) {
-                for (const [k, v] of Object.entries(outData)) {
-                  updateNodeConfig(exec.nodeId, k, v);
+
+              // ✅ Only spread if it's a plain object
+              if (
+                outData !== null &&
+                typeof outData === "object" &&
+                !Array.isArray(outData)
+              ) {
+                for (const [k, v] of Object.entries(outData as Record<string, unknown>)) {
+                  updateNodeConfig(exec.nodeId, k, v as string);
                 }
               }
             }
           }
         }
 
-        // Stop when the overall run is terminal
         if (run.status === "Completed" || run.status === "Failed") {
           stopped = true;
           setIsRunning(false);
-          onRunStart?.(); // refresh sidebar one final time
+          onRunStart?.();
           return;
         }
       } catch {
@@ -101,21 +121,20 @@ export default function CanvasToolbar({ workflowId, onRunStart }: CanvasToolbarP
     setIsRunning(true);
 
     try {
-      // Force save the latest nodes and edges before executing so the backend doesn't miss newly created connections!
-      // We must map them to plain objects to strip out any non-serializable internal React Flow properties (like DOM refs)
-      const currentNodes = useWorkflowStore.getState().nodes.map(n => ({
+      const currentNodes = useWorkflowStore.getState().nodes.map((n) => ({
         id: n.id,
         type: n.type,
         position: n.position,
-        data: n.data
+        data: n.data,
       }));
-      const currentEdges = useWorkflowStore.getState().edges.map(e => ({
+      const currentEdges = useWorkflowStore.getState().edges.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
         sourceHandle: e.sourceHandle,
-        targetHandle: e.targetHandle
+        targetHandle: e.targetHandle,
       }));
+
       const { saveWorkflow } = await import("@/actions/workflow");
       await saveWorkflow(workflowId, currentNodes, currentEdges);
 
